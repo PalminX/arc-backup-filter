@@ -1,6 +1,6 @@
-# Filter LocoKit1 Backup by Date Range (Windows PowerShell Wrapper)
+# Filter LocoKit1/LocoKit2 Backup by Date Range (Windows PowerShell Wrapper)
 #
-# This script provides an interactive interface to filter LocoKit1 backups by date range.
+# This script provides an interactive interface to filter LocoKit1/LocoKit2 backups by date range.
 #
 # Usage:
 #   .\filter_backup_by_daterange.ps1
@@ -65,8 +65,18 @@ function Validate-Directory {
         return $false
     }
     
-    if (-not (Test-Path "$Path\TimelineItem" -PathType Container)) {
-        Write-Error2 "TimelineItem directory not found. Is this a valid LocoKit1 backup?"
+    $hasLocoKit1Items = Test-Path "$Path\TimelineItem" -PathType Container
+    $hasLocoKit2Items = Test-Path "$Path\items" -PathType Container
+    $hasLocoKit1Samples = Test-Path "$Path\LocomotionSample" -PathType Container
+    $hasLocoKit2Samples = Test-Path "$Path\samples" -PathType Container
+
+    if (-not $hasLocoKit1Items -and -not $hasLocoKit2Items) {
+        Write-Error2 "TimelineItem or items directory not found. Is this a valid LocoKit1 or LocoKit2 backup?"
+        return $false
+    }
+
+    if (-not $hasLocoKit1Samples -and -not $hasLocoKit2Samples) {
+        Write-Error2 "LocomotionSample or samples directory not found. Is this a valid LocoKit1 or LocoKit2 backup?"
         return $false
     }
     
@@ -86,7 +96,7 @@ function Parse-DateTime {
 
 function Prompt-ForBackupDir {
     Write-Host ""
-    Write-Host "Enter the path to your LocoKit1 backup directory" -ForegroundColor $ColorInfo
+    Write-Host "Enter the path to your LocoKit1/LocoKit2 backup directory" -ForegroundColor $ColorInfo
     Write-Host "Example: c:\tmp\iCloud\iCloudDrive\iCloud~com~bigpaua~LearnerCoacher\Backups" -ForegroundColor Gray
     Write-Host ""
     
@@ -294,7 +304,7 @@ function Run-PythonScript {
 }
 
 # Main execution
-Write-Title "LocoKit1 Backup Filter by Date Range"
+Write-Title "LocoKit1/LocoKit2 Backup Filter by Date Range"
 
 # Determine if params were provided
 if (-not $BackupDir) {

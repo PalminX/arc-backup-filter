@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 r"""
-Filter LocoKit1 Backup by Date Range
+Filter LocoKit1/LocoKit2 Backup by Date Range
 
-Creates a filtered copy of a LocoKit1 backup containing only data within a specified
-date range. Maintains the full directory structure (TimelineItem, LocomotionSample, Place).
+Creates a filtered copy of a LocoKit1 or LocoKit2 backup containing only data within a specified
+date range. Maintains the full directory structure:
+- LocoKit1: TimelineItem, LocomotionSample, Place
+- LocoKit2: items, samples, places
 
 Usage:
   python filter_backup_by_daterange.py ^
@@ -22,7 +24,7 @@ import gzip
 import logging
 from pathlib import Path
 from datetime import datetime, timedelta
-from typing import List, Set, Dict, Optional
+from typing import List, Set, Dict, Optional, Tuple
 import argparse
 import shutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -36,38 +38,71 @@ logger = logging.getLogger(__name__)
 
 
 class BackupFilter:
-    """Filters and copies LocoKit1 backup data by date range."""
+    """Filters and copies LocoKit1/LocoKit2 backup data by date range."""
     
     def __init__(self, backup_dir: str, output_dir: str):
         """
         Initialize the filter.
         
         Args:
-            backup_dir: Path to source Arc/LocoKit1 backup
+            backup_dir: Path to source Arc/LocoKit1 or LocoKit2 backup
             output_dir: Path to output directory (will be created)
         """
         self.backup_dir = Path(backup_dir)
         self.output_dir = Path(output_dir)
+        self.backup_type = self._detect_backup_type()
         
-        # Validate source
-        self.timeline_item_dir = self.backup_dir / "TimelineItem"
-        self.locomotion_sample_dir = self.backup_dir / "LocomotionSample"
-        self.place_dir = self.backup_dir / "Place"
-        
-        if not self.timeline_item_dir.exists():
-            raise ValueError(f"TimelineItem directory not found: {self.timeline_item_dir}")
-        if not self.locomotion_sample_dir.exists():
-            raise ValueError(f"LocomotionSample directory not found: {self.locomotion_sample_dir}")
-        
-        # Create output directories
-        self.output_timeline_dir = self.output_dir / "TimelineItem"
-        self.output_sample_dir = self.output_dir / "LocomotionSample"
-        self.output_place_dir = self.output_dir / "Place"
+        if self.backup_type == "locokit1":
+            self.timeline_item_dir = self.backup_dir / "TimelineItem"
+            self.locomotion_sample_dir = self.backup_dir / "LocomotionSample"
+            self.place_dir = self.backup_dir / "Place"
+            
+            if not self.timeline_item_dir.exists():
+                raise ValueError(f"TimelineItem directory not found: {self.timeline_item_dir}")
+            if not self.locomotion_sample_dir.exists():
+                raise ValueError(f"LocomotionSample directory not found: {self.locomotion_sample_dir}")
+            
+            self.output_timeline_dir = self.output_dir / "TimelineItem"
+            self.output_sample_dir = self.output_dir / "LocomotionSample"
+            self.output_place_dir = self.output_dir / "Place"
+        else:
+            self.timeline_item_dir = self.backup_dir / "items"
+            self.locomotion_sample_dir = self.backup_dir / "samples"
+            self.place_dir = self.backup_dir / "places"
+            
+            if not self.timeline_item_dir.exists():
+                raise ValueError(f"items directory not found: {self.timeline_item_dir}")
+            if not self.locomotion_sample_dir.exists():
+                raise ValueError(f"samples directory not found: {self.locomotion_sample_dir}")
+            if not self.place_dir.exists():
+                logger.warning("places directory not found; place metadata will be skipped")
+            
+            self.output_timeline_dir = self.output_dir / "items"
+            self.output_sample_dir = self.output_dir / "samples"
+            self.output_place_dir = self.output_dir / "places"
         
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.output_timeline_dir.mkdir(parents=True, exist_ok=True)
         self.output_sample_dir.mkdir(parents=True, exist_ok=True)
         self.output_place_dir.mkdir(parents=True, exist_ok=True)
+
+    def _detect_backup_type(self) -> str:
+        """Detect whether backup directory is LocoKit1 or LocoKit2."""
+        has_locokit1 = (self.backup_dir / "TimelineItem").exists() and (self.backup_dir / "LocomotionSample").exists()
+        has_locokit2 = (self.backup_dir / "items").exists() and (self.backup_dir / "samples").exists()
+
+        if has_locokit2 and not has_locokit1:
+            return "locokit2"
+        if has_locokit1 and not has_locokit2:
+            return "locokit1"
+        if has_locokit1 and has_locokit2:
+            logger.warning("Both LocoKit1 and LocoKit2 structures detected; defaulting to LocoKit2")
+            return "locokit2"
+
+        raise ValueError(
+            "Backup format not recognized. Expected LocoKit1 (TimelineItem/LocomotionSample) "
+            "or LocoKit2 (items/samples) directories."
+        )
     
     @staticmethod
     def _parse_date(date_str: Optional[str]) -> Optional[datetime]:
@@ -90,12 +125,12 @@ class BackupFilter:
         except (ValueError, AttributeError):
             return None
     
-    def filter_timeline_items(self, start_date: str, end_date: str) -> Set[str]:
+    def filter_timeline_items(self, start_date: str, end_date: str) -> Tuple[Set[str], int]:
         """
         Filter and copy TimelineItems within date range.
         
         Returns:
-            Set of place IDs referenced by filtered items
+            Tuple of (place IDs referenced by filtered items, filtered item count)
         
         Args:
             start_date: ISO datetime string (YYYY-MM-DD HH:MM:SS)
@@ -114,59 +149,83 @@ class BackupFilter:
         
         place_ids: Set[str] = set()
         item_count = 0
-        bucket_count = 0
-        
-        # Process each bucket (00-FF)
-        bucket_dirs = sorted([d for d in self.timeline_item_dir.iterdir() if d.is_dir()])
-        
-        for bucket_dir in bucket_dirs:
-            bucket_name = bucket_dir.name
-            bucket_items = 0
-            
-            # Create output bucket directory
-            output_bucket = self.output_timeline_dir / bucket_name
-            output_bucket.mkdir(exist_ok=True)
-            
-            # Process items in this bucket
-            for item_file in bucket_dir.glob("*.json"):
-                try:
-                    # Skip empty/corrupted files
-                    if item_file.stat().st_size == 0:
-                        continue
-                    
-                    with open(item_file, 'r', encoding='utf-8') as f:
-                        item = json.load(f)
-                    
-                    # Check if item overlaps date range
-                    item_start = self._parse_date(item.get('startDate'))
-                    item_end = self._parse_date(item.get('endDate'))
-                    
-                    if item_start and item_end:
-                        if item_start <= end_dt and item_end >= start_dt:
-                            # Copy to output
+
+        if self.backup_type == "locokit1":
+            bucket_count = 0
+            bucket_dirs = sorted([d for d in self.timeline_item_dir.iterdir() if d.is_dir()])
+
+            for bucket_dir in bucket_dirs:
+                bucket_name = bucket_dir.name
+                bucket_items = 0
+
+                output_bucket = self.output_timeline_dir / bucket_name
+                output_bucket.mkdir(exist_ok=True)
+
+                for item_file in bucket_dir.glob("*.json"):
+                    try:
+                        if item_file.stat().st_size == 0:
+                            continue
+
+                        with open(item_file, 'r', encoding='utf-8') as f:
+                            item = json.load(f)
+
+                        item_start = self._parse_date(item.get('startDate'))
+                        item_end = self._parse_date(item.get('endDate'))
+
+                        if item_start and item_end and item_start <= end_dt and item_end >= start_dt:
                             output_file = output_bucket / item_file.name
                             shutil.copy2(item_file, output_file)
-                            
-                            # Track place ID if this is a visit
+
                             if item.get('isVisit') and 'placeId' in item:
                                 place_ids.add(item['placeId'])
-                            
+
                             bucket_items += 1
                             item_count += 1
-                
-                except json.JSONDecodeError:
-                    logger.warning(f"Skipping corrupted JSON: {item_file.name}")
-                except Exception as e:
-                    logger.warning(f"Error processing {item_file.name}: {e}")
-            
-            if bucket_items > 0:
-                logger.debug(f"Bucket {bucket_name}: {bucket_items} items")
-                bucket_count += 1
-        
-        logger.info(f"Filtered {item_count} TimelineItems from {bucket_count} buckets")
+
+                    except json.JSONDecodeError:
+                        logger.warning(f"Skipping corrupted JSON: {item_file.name}")
+                    except Exception as e:
+                        logger.warning(f"Error processing {item_file.name}: {e}")
+
+                if bucket_items > 0:
+                    logger.debug(f"Bucket {bucket_name}: {bucket_items} items")
+                    bucket_count += 1
+
+            logger.info(f"Filtered {item_count} TimelineItems from {bucket_count} buckets")
+        else:
+            month_files = self._iter_locokit2_item_files_for_range(start_dt, end_dt)
+            month_file_count = 0
+
+            for item_file in month_files:
+                items = self._read_locokit2_item_file(item_file)
+                if not items:
+                    continue
+
+                filtered_items = []
+                for item in items:
+                    base = item.get('base') or {}
+                    item_start = self._parse_date(base.get('startDate') or item.get('startDate'))
+                    item_end = self._parse_date(base.get('endDate') or item.get('endDate'))
+
+                    if item_start and item_end and item_start <= end_dt and item_end >= start_dt:
+                        filtered_items.append(item)
+                        place_id = self._extract_place_id(item)
+                        if place_id:
+                            place_ids.add(place_id)
+
+                if filtered_items:
+                    output_file = self.output_timeline_dir / item_file.name
+                    with open(output_file, 'w', encoding='utf-8') as f:
+                        json.dump(filtered_items, f)
+
+                    item_count += len(filtered_items)
+                    month_file_count += 1
+
+            logger.info(f"Filtered {item_count} TimelineItems from {month_file_count} month files")
+
         logger.info(f"Found {len(place_ids)} unique place IDs")
-        
-        return place_ids
+
+        return place_ids, item_count
     
     def filter_locomotion_samples(self, start_date: str, end_date: str) -> int:
         """
@@ -254,6 +313,44 @@ class BackupFilter:
                 logger.warning(f"Could not parse week file name: {week_file.name}")
         
         return week_files
+
+    def _iter_locokit2_item_files_for_range(self, start_dt: datetime, end_dt: datetime) -> List[Path]:
+        files = []
+        current = datetime(start_dt.year, start_dt.month, 1)
+        end_marker = datetime(end_dt.year, end_dt.month, 1)
+        while current <= end_marker:
+            name = f"{current.year:04d}-{current.month:02d}.json"
+            path = self.timeline_item_dir / name
+            if path.exists():
+                files.append(path)
+            current = (current.replace(day=28) + timedelta(days=4)).replace(day=1)
+        return files
+
+    def _read_locokit2_item_file(self, item_file: Path) -> List[Dict]:
+        try:
+            if item_file.stat().st_size == 0:
+                return []
+            with open(item_file, 'r', encoding='utf-8') as f:
+                items = json.load(f)
+            return items if isinstance(items, list) else []
+        except (json.JSONDecodeError, IOError) as e:
+            logger.warning(f"Error reading item file {item_file.name}: {e}")
+            return []
+
+    def _extract_place_id(self, item: Dict) -> Optional[str]:
+        base = item.get('base') or {}
+        visit = item.get('visit') or {}
+        place = item.get('place') or {}
+
+        for candidate in (
+            item.get('placeId'),
+            base.get('placeId'),
+            visit.get('placeId') if isinstance(visit, dict) else None,
+            place.get('id') if isinstance(place, dict) else None,
+        ):
+            if isinstance(candidate, str) and candidate:
+                return candidate
+        return None
     
     def copy_places(self, place_ids: Set[str]) -> int:
         """
@@ -265,33 +362,58 @@ class BackupFilter:
         if not self.place_dir.exists():
             logger.warning("Place directory not found in backup")
             return 0
-        
+
         logger.info(f"Copying {len(place_ids)} place records")
-        
+
         place_count = 0
-        
-        for place_id in place_ids:
-            try:
-                # Places are bucketed by first character
-                bucket = place_id[0].upper()
-                source_file = self.place_dir / bucket / f"{place_id}.json"
-                
+
+        if self.backup_type == "locokit1":
+            for place_id in place_ids:
+                try:
+                    bucket = place_id[0].upper()
+                    source_file = self.place_dir / bucket / f"{place_id}.json"
+
+                    if not source_file.exists():
+                        logger.debug(f"Place file not found: {place_id}")
+                        continue
+
+                    output_bucket = self.output_place_dir / bucket
+                    output_bucket.mkdir(exist_ok=True)
+
+                    output_file = output_bucket / f"{place_id}.json"
+                    shutil.copy2(source_file, output_file)
+                    place_count += 1
+
+                except Exception as e:
+                    logger.warning(f"Error copying place {place_id}: {e}")
+        else:
+            bucket_ids = sorted({pid[0].upper() for pid in place_ids if isinstance(pid, str) and pid})
+            place_id_set = {pid for pid in place_ids if isinstance(pid, str) and pid}
+
+            for bucket in bucket_ids:
+                source_file = self.place_dir / f"{bucket}.json"
                 if not source_file.exists():
-                    logger.debug(f"Place file not found: {place_id}")
+                    logger.debug(f"Place bucket file not found: {bucket}.json")
                     continue
-                
-                # Create output bucket directory
-                output_bucket = self.output_place_dir / bucket
-                output_bucket.mkdir(exist_ok=True)
-                
-                # Copy file
-                output_file = output_bucket / f"{place_id}.json"
-                shutil.copy2(source_file, output_file)
-                place_count += 1
-            
-            except Exception as e:
-                logger.warning(f"Error copying place {place_id}: {e}")
-        
+
+                try:
+                    with open(source_file, 'r', encoding='utf-8') as f:
+                        places = json.load(f)
+                    if not isinstance(places, list):
+                        continue
+
+                    filtered_places = [p for p in places if p.get('id') in place_id_set]
+                    if not filtered_places:
+                        continue
+
+                    output_file = self.output_place_dir / f"{bucket}.json"
+                    with open(output_file, 'w', encoding='utf-8') as f:
+                        json.dump(filtered_places, f)
+
+                    place_count += len(filtered_places)
+                except (json.JSONDecodeError, IOError) as e:
+                    logger.warning(f"Error reading place bucket {bucket}: {e}")
+
         logger.info(f"Copied {place_count} place records")
         return place_count
     
@@ -306,23 +428,18 @@ class BackupFilter:
         logger.info(f"Starting backup filter operation")
         logger.info(f"Source: {self.backup_dir}")
         logger.info(f"Output: {self.output_dir}")
+        logger.info(f"Detected backup type: {self.backup_type}")
         logger.info("=" * 70)
         
         try:
             # Step 1: Filter TimelineItems
-            place_ids = self.filter_timeline_items(start_date, end_date)
+            place_ids, timeline_count = self.filter_timeline_items(start_date, end_date)
             
             # Step 2: Filter LocomotionSamples
             sample_count = self.filter_locomotion_samples(start_date, end_date)
             
             # Step 3: Copy Places
             place_count = self.copy_places(place_ids)
-            
-            # Get final counts
-            timeline_count = sum(
-                len(list(p.glob("*.json")))
-                for p in self.output_timeline_dir.iterdir() if p.is_dir()
-            )
             
             logger.info("=" * 70)
             logger.info("✓ Filter operation completed successfully!")
@@ -346,7 +463,7 @@ class BackupFilter:
 def parse_arguments():
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
-        description='Filter LocoKit1 backup by date range',
+        description='Filter LocoKit1/LocoKit2 backup by date range',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog='''
 Examples:
@@ -373,7 +490,7 @@ Examples:
         '--backup-dir',
         type=str,
         required=True,
-        help='Path to LocoKit1 backup root directory'
+        help='Path to LocoKit1 or LocoKit2 backup root directory'
     )
     
     parser.add_argument(

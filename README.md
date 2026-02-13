@@ -2,11 +2,11 @@
 
 Filter Arc Timeline backup directories by date range, creating date-filtered copies while maintaining the complete directory structure.
 
-(!) Note: This currently works on Arc Timeline (aka LocoKit1) backups only. 
+This tool auto-detects LocoKit1 and LocoKit2 backup formats.
 
 ## Overview
 
-This tool creates a filtered copy of a LocoKit1/Arc backup, containing only data within a specified date range. Useful for:
+This tool creates a filtered copy of a LocoKit1 or LocoKit2 backup, containing only data within a specified date range. Useful for:
 - Creating test datasets
 - Analyzing specific time periods
 - Reducing backup size for sharing or analysis
@@ -44,10 +44,9 @@ python filter_backup_by_daterange.py --backup-dir "c:\backup" --days 7
 
 ### Requirements
 - Python 3.7+
-- A valid LocoKit1 backup directory with:
-  - TimelineItem/ folder (hex-bucketed)
-  - LocomotionSample/ folder (week-bucketed .json.gz files)
-  - Place/ folder (optional but recommended)
+- A valid LocoKit1 or LocoKit2 backup directory:
+  - LocoKit1: TimelineItem/, LocomotionSample/, Place/
+  - LocoKit2: items/, samples/, places/
 
 ### Setup
 1. Ensure Python is in your PATH:
@@ -96,10 +95,10 @@ usage: filter_backup_by_daterange.py [-h] --backup-dir BACKUP_DIR
                                      (--start START | --date DATE | --days DAYS)
                                      [--end END]
 
-Filter LocoKit1 backup by date range
+Filter LocoKit1/LocoKit2 backup by date range
 
 options:
-  --backup-dir BACKUP_DIR     Path to LocoKit1 backup root directory (required)
+  --backup-dir BACKUP_DIR     Path to LocoKit1 or LocoKit2 backup root directory (required)
   --output-dir OUTPUT_DIR     Output directory (default: ./filtered_backup)
   --start START               Start date/time (YYYY-MM-DD HH:MM:SS)
   --end END                   End date/time (YYYY-MM-DD HH:MM:SS)
@@ -118,6 +117,8 @@ Examples:
 
 ## Output Structure
 
+LocoKit1 output structure:
+
 ```
 filtered_backup/
 ├── TimelineItem/          # Hex-bucketed (00-FF)
@@ -130,10 +131,25 @@ filtered_backup/
 │   ├── 2024-W50.json.gz
 │   └── 2024-W51.json.gz
 └── Place/                 # Hex-bucketed
-    ├── A/
-    │   └── PLACE_UUID.json
-    └── B/
-        └── PLACE_UUID.json
+  ├── A/
+  │   └── PLACE_UUID.json
+  └── B/
+    └── PLACE_UUID.json
+```
+
+LocoKit2 output structure:
+
+```
+filtered_backup/
+├── items/                 # Monthly JSON arrays
+│   ├── 2024-11.json
+│   └── 2024-12.json
+├── samples/               # Week-bucketed .json.gz
+│   ├── 2024-W50.json.gz
+│   └── 2024-W51.json.gz
+└── places/                # Bucketed JSON arrays
+  ├── A.json
+  └── B.json
 ```
 
 ## Filtering Rules
@@ -189,10 +205,17 @@ The script uses parallel processing (16 workers) for TimelineItem buckets.
 
 ### Supported Backup Format
 
-The tool works with LocoKit1 backups in the Arc iCloud format:
+The tool works with LocoKit1 and LocoKit2 backups:
+
+LocoKit1 (Arc iCloud format):
 - TimelineItem: hex-bucketed JSON files (00-FF)
 - LocomotionSample: ISO-week-bucketed gzip JSON files (YYYY-Wnn.json.gz)
 - Place: optional hex-bucketed place metadata
+
+LocoKit2 (Arc Editor format):
+- items: monthly JSON arrays (YYYY-MM.json)
+- samples: ISO-week-bucketed gzip JSON files (YYYY-Wnn.json.gz)
+- places: bucketed JSON arrays (0-9, A-F.json)
 
 ### Python Version Support
 
@@ -217,9 +240,14 @@ Apache License 2.0 — See LICENSE file for details.
 
 Created with GitHub Copilot.
 
+## Acknowledgement
+
+Big thanks to Matt Greenfield (@sobri909) for creating Arc and LocoKit in the first place.
+
 ## Related
 
-- Arc App: https://arc-app.com/
+- Arc App: https://www.bigpaua.com/arcapp/
+- LocoKit1: https://github.com/sobri909/LocoKit/
 - LocoKit2: https://github.com/sobri909/LocoKit2
 
 ---

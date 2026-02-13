@@ -1,5 +1,5 @@
 @echo off
-REM Filter LocoKit1 Backup by Date Range (Windows Batch)
+REM Filter LocoKit1/LocoKit2 Backup by Date Range (Windows Batch)
 REM
 REM This script provides an easy way to run the filter on Windows without PowerShell.
 REM
@@ -11,7 +11,7 @@ setlocal enabledelayedexpansion
 
 echo.
 echo ================================================================================
-echo LocoKit1 Backup Filter by Date Range
+echo LocoKit1/LocoKit2 Backup Filter by Date Range
 echo ================================================================================
 echo.
 
@@ -38,7 +38,7 @@ echo.
 
 REM Prompt for backup directory
 :prompt_backup_dir
-echo Please enter the path to your LocoKit1 backup directory.
+echo Please enter the path to your LocoKit1/LocoKit2 backup directory.
 echo Example: c:\tmp\iCloud\iCloudDrive\iCloud~com~bigpaua~LearnerCoacher\Backups
 echo.
 set /p BACKUP_DIR="Backup directory: "
@@ -48,14 +48,29 @@ if "!BACKUP_DIR!"=="" (
     goto prompt_backup_dir
 )
 
+REM Normalize trailing backslash to avoid escaping the closing quote in cmd.exe
+if "!BACKUP_DIR:~-1!"=="\" (
+    if "!BACKUP_DIR:~3,1!"=="" (
+        set "BACKUP_DIR=!BACKUP_DIR!."
+    ) else (
+        set "BACKUP_DIR=!BACKUP_DIR:~0,-1!"
+    )
+)
+
 if not exist "!BACKUP_DIR!" (
     echo [!] Directory does not exist: !BACKUP_DIR!
     goto prompt_backup_dir
 )
 
-if not exist "!BACKUP_DIR!\TimelineItem" (
-    echo [!] Invalid backup directory - TimelineItem folder not found.
-    echo This doesn't look like a valid LocoKit1 backup.
+if not exist "!BACKUP_DIR!\TimelineItem" if not exist "!BACKUP_DIR!\items" (
+    echo [!] Invalid backup directory - TimelineItem or items folder not found.
+    echo This doesn't look like a valid LocoKit1 or LocoKit2 backup.
+    goto prompt_backup_dir
+)
+
+if not exist "!BACKUP_DIR!\LocomotionSample" if not exist "!BACKUP_DIR!\samples" (
+    echo [!] Invalid backup directory - LocomotionSample or samples folder not found.
+    echo This doesn't look like a valid LocoKit1 or LocoKit2 backup.
     goto prompt_backup_dir
 )
 
@@ -72,6 +87,15 @@ set /p OUTPUT_DIR="Output directory: "
 
 if "!OUTPUT_DIR!"=="" (
     set OUTPUT_DIR=filtered_backup
+)
+
+REM Normalize trailing backslash to avoid escaping the closing quote in cmd.exe
+if "!OUTPUT_DIR:~-1!"=="\" (
+    if "!OUTPUT_DIR:~3,1!"=="" (
+        set "OUTPUT_DIR=!OUTPUT_DIR!."
+    ) else (
+        set "OUTPUT_DIR=!OUTPUT_DIR:~0,-1!"
+    )
 )
 
 echo [*] Output directory: !OUTPUT_DIR!
