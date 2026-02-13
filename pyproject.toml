@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.7"
 license = {text = "Apache-2.0"}
 authors = [
-    {name = "Contributor", email = ""}
+    {name = "PalminX", email = "bkuemmer@gmx.net"}
 ]
 keywords = ["arc", "timeline", "backup", "filter", "locokit"]
 classifiers = [
@@ -32,9 +32,9 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/arc-backup-filter"
-Repository = "https://github.com/yourusername/arc-backup-filter.git"
-Issues = "https://github.com/yourusername/arc-backup-filter/issues"
+Homepage = "https://github.com/PalminX/arc-backup-filter"
+Repository = "https://github.com/PalminX/arc-backup-filter.git"
+Issues = "https://github.com/PalminX/arc-backup-filter/issues"
 
 [project.scripts]
 arc-backup-filter = "filter_backup_by_daterange:main"
