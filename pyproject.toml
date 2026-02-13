@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "arc-backup-filter"
+version = "1.0.0"
+description = "Filter Arc Timeline backup directories by date range"
+readme = "README.md"
+requires-python = ">=3.7"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "Contributor", email = ""}
+]
+keywords = ["arc", "timeline", "backup", "filter", "locokit"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: Apache Software License",
+    "Natural Language :: English",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Utilities",
+]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/arc-backup-filter"
+Repository = "https://github.com/yourusername/arc-backup-filter.git"
+Issues = "https://github.com/yourusername/arc-backup-filter/issues"
+
+[project.scripts]
+arc-backup-filter = "filter_backup_by_daterange:main"
+
+[tool.setuptools]
+py-modules = ["filter_backup_by_daterange"]
