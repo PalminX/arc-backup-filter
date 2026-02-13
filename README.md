@@ -2,6 +2,8 @@
 
 Filter Arc Timeline backup directories by date range, creating date-filtered copies while maintaining the complete directory structure.
 
+(!) Note: This currently works on Arc Timeline (aka LocoKit1) backups only. 
+
 ## Overview
 
 This tool creates a filtered copy of a LocoKit1/Arc backup, containing only data within a specified date range. Useful for:
